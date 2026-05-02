@@ -1,0 +1,101 @@
+import * as fs from "fs";
+import * as path from "path";
+import axios from "axios";
+import * as tsj from "ts-json-schema-generator";
+import Ajv from "ajv";
+
+const ARKHAM_TS_URL =
+  "https://raw.githubusercontent.com/bulaxy/arkhamdle/master/src/types/arkham.ts";
+const ARKHAM_DB_API = "https://arkhamdb.com/api/public/cards/?encounter=1";
+
+export const handler = async (event: any) => {
+  console.log("Starting Arkhamdle Checker execution.");
+
+  try {
+    // 1. Fetch arkham.ts
+    console.log(`Fetching arkham.ts from ${ARKHAM_TS_URL}`);
+    const tsRes = await axios.get(ARKHAM_TS_URL);
+    const tsContent = tsRes.data;
+
+    // 2. Save it to /tmp
+    const tmpTsPath = path.join("/tmp", "arkham.ts");
+    fs.writeFileSync(tmpTsPath, tsContent);
+
+    // 3. Generate JSON Schema
+    console.log("Generating JSON Schema for ArkhamCard interface...");
+    const config = {
+      path: tmpTsPath,
+      type: "ArkhamCard",
+      additionalProperties: false, // We set to false to catch new fields!
+    };
+    const schema = tsj.createGenerator(config).createSchema(config.type);
+
+    // 4. Initialize Ajv
+    const ajv = new Ajv({ strict: false, allowUnionTypes: true, allErrors: true });
+    const validate = ajv.compile(schema);
+
+    // 5. Fetch cards
+    console.log(`Fetching ArkhamDB cards from ${ARKHAM_DB_API}`);
+    const dbRes = await axios.get(ARKHAM_DB_API);
+    const cards = dbRes.data;
+
+    console.log(`Fetched ${cards.length} cards. Validating...`);
+
+    let criticalErrors: any[] = [];
+    let warningCount = 0;
+    const additionalPropertiesFound = new Set<string>();
+
+    for (const card of cards) {
+      const valid = validate(card);
+      if (!valid && validate.errors) {
+        for (const err of validate.errors) {
+          if (err.keyword === "additionalProperties") {
+            // New property added, log as warning
+            const prop = err.params.additionalProperty;
+            additionalPropertiesFound.add(prop);
+            warningCount++;
+          } else {
+            // Structural error (missing required, wrong type)
+            criticalErrors.push({
+              cardCode: card.code,
+              cardName: card.name,
+              error: err,
+            });
+          }
+        }
+      }
+    }
+
+    if (additionalPropertiesFound.size > 0) {
+      console.warn(`WARNING: Found ${warningCount} instances of additional properties.`);
+      console.warn("Properties added:", Array.from(additionalPropertiesFound));
+    }
+
+    if (criticalErrors.length > 0) {
+      console.error(`CRITICAL: Found ${criticalErrors.length} critical validation errors.`);
+
+      // We will only log the first 10 for brevity in the console and webhook
+      const sampleErrors = criticalErrors.slice(0, 10);
+      console.error("Sample critical errors:", JSON.stringify(sampleErrors, null, 2));
+
+      // 6. Webhook Notification
+      const webhookUrl = process.env.WEBHOOK_URL;
+      if (webhookUrl) {
+        console.log(`Sending failure notification to webhook: ${webhookUrl}`);
+        await axios
+          .post(webhookUrl, {
+            text: `🚨 **Arkhamdle Checker Alert** 🚨\nValidation against ArkhamDB API failed.\n${criticalErrors.length} critical errors found.\n\nSample:\n\`\`\`json\n${JSON.stringify(sampleErrors, null, 2)}\n\`\`\``,
+          })
+          .catch((err) => console.error("Failed to send webhook:", err.message));
+      }
+
+      throw new Error(`Validation failed with ${criticalErrors.length} critical errors.`);
+    }
+
+    console.log("Validation successful. No critical errors found.");
+    return { statusCode: 200, body: "Success" };
+  } catch (error: any) {
+    console.error("Execution failed:", error);
+    throw error;
+  }
+};
