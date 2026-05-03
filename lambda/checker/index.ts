@@ -24,6 +24,7 @@ const KNOWN_ISSUES = new Set<string>([
   "id",
   "base_level",
   "ignore_match",
+  "permanent", // This is used, already added in the important spot
 ]);
 
 export const handler = async (event: any) => {
