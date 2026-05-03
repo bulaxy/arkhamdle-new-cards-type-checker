@@ -22,9 +22,9 @@ const KNOWN_ISSUES = new Set<string>([
   "slot",
   "option_select",
   "id",
-  "base_level",
-  "ignore_match",
-  "permanent", // This is used, already added in the important spot
+  // "base_level", // Temp remove to test it
+  // "ignore_match",
+  // "permanent", // This is used, already added in the important spot
 ]);
 
 export const handler = async (event: any) => {
@@ -98,7 +98,7 @@ export const handler = async (event: any) => {
         console.log(`Sending warning notification to webhook: ${webhookUrl}`);
         await axios
           .post(webhookUrl, {
-            text: `⚠️ **Arkhamdle Checker** - Found ${warningCount} instances of additional properties.\n\nProperties: ${Array.from(additionalPropertiesFound).join(", ")}`,
+            content: `⚠️ **Arkhamdle Checker** - Found ${warningCount} instances of additional properties.\n\nProperties: ${Array.from(additionalPropertiesFound).join(", ")}`,
           })
           .catch((err) => console.error("Failed to send webhook:", err.message));
       }
@@ -117,7 +117,7 @@ export const handler = async (event: any) => {
         console.log(`Sending failure notification to webhook: ${webhookUrl}`);
         await axios
           .post(webhookUrl, {
-            text: `🚨 **Arkhamdle Checker Alert** 🚨\n<@244224402126929920> Validation against ArkhamDB API failed.\n${criticalErrors.length} critical errors found.\n\nSample:\n\`\`\`json\n${JSON.stringify(sampleErrors, null, 2)}\n\`\`\``,
+            content: `🚨 **Arkhamdle Checker Alert** 🚨\n<@244224402126929920> Validation against ArkhamDB API failed.\n${criticalErrors.length} critical errors found.\n\nSample:\n\`\`\`json\n${JSON.stringify(sampleErrors, null, 2)}\n\`\`\``,
           })
           .catch((err) => console.error("Failed to send webhook:", err.message));
       }
