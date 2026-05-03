@@ -8,6 +8,24 @@ const ARKHAM_TS_URL =
   "https://raw.githubusercontent.com/bulaxy/arkhamdle/master/src/types/arkham.ts";
 const ARKHAM_DB_API = "https://arkhamdb.com/api/public/cards/?encounter=1";
 
+// Known issues that should not trigger warnings, they are not useful field in my arkhamdle implementation, but are present in arkhamdb and not in arkham.ts, so we ignore them for now. This allows us to focus on truly new fields that might indicate a breaking change.
+const KNOWN_ISSUES = new Set<string>([
+  "spoiler",
+  "tag",
+  "atleast",
+  "uses",
+  "text",
+  "name",
+  "faction_select",
+  "type",
+  "deck_size_select",
+  "slot",
+  "option_select",
+  "id",
+  "base_level",
+  "ignore_match",
+]);
+
 export const handler = async (event: any) => {
   console.log("Starting Arkhamdle Checker execution.");
 
@@ -50,10 +68,13 @@ export const handler = async (event: any) => {
       if (!valid && validate.errors) {
         for (const err of validate.errors) {
           if (err.keyword === "additionalProperties") {
-            // New property added, log as warning
+            // New property added
             const prop = err.params.additionalProperty;
-            additionalPropertiesFound.add(prop);
-            warningCount++;
+            // Only track if not in known issues list
+            if (!KNOWN_ISSUES.has(prop)) {
+              additionalPropertiesFound.add(prop);
+              warningCount++;
+            }
           } else {
             // Structural error (missing required, wrong type)
             criticalErrors.push({
@@ -69,6 +90,17 @@ export const handler = async (event: any) => {
     if (additionalPropertiesFound.size > 0) {
       console.warn(`WARNING: Found ${warningCount} instances of additional properties.`);
       console.warn("Properties added:", Array.from(additionalPropertiesFound));
+
+      // Notify about warnings without mention
+      const webhookUrl = process.env.WEBHOOK_URL;
+      if (webhookUrl) {
+        console.log(`Sending warning notification to webhook: ${webhookUrl}`);
+        await axios
+          .post(webhookUrl, {
+            text: `⚠️ **Arkhamdle Checker** - Found ${warningCount} instances of additional properties.\n\nProperties: ${Array.from(additionalPropertiesFound).join(", ")}`,
+          })
+          .catch((err) => console.error("Failed to send webhook:", err.message));
+      }
     }
 
     if (criticalErrors.length > 0) {
@@ -78,13 +110,13 @@ export const handler = async (event: any) => {
       const sampleErrors = criticalErrors.slice(0, 10);
       console.error("Sample critical errors:", JSON.stringify(sampleErrors, null, 2));
 
-      // 6. Webhook Notification
+      // Send error notification to webhook
       const webhookUrl = process.env.WEBHOOK_URL;
       if (webhookUrl) {
         console.log(`Sending failure notification to webhook: ${webhookUrl}`);
         await axios
           .post(webhookUrl, {
-            text: `🚨 **Arkhamdle Checker Alert** 🚨\nValidation against ArkhamDB API failed.\n${criticalErrors.length} critical errors found.\n\nSample:\n\`\`\`json\n${JSON.stringify(sampleErrors, null, 2)}\n\`\`\``,
+            text: `🚨 **Arkhamdle Checker Alert** 🚨\n<@244224402126929920> Validation against ArkhamDB API failed.\n${criticalErrors.length} critical errors found.\n\nSample:\n\`\`\`json\n${JSON.stringify(sampleErrors, null, 2)}\n\`\`\``,
           })
           .catch((err) => console.error("Failed to send webhook:", err.message));
       }
