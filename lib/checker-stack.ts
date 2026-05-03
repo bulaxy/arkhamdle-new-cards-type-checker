@@ -11,7 +11,7 @@ export class CheckerStack extends cdk.Stack {
     super(scope, id, props);
 
     const checkerLambda = new lambdaNodejs.NodejsFunction(this, "CheckerLambda", {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, "../lambda/checker/index.ts"),
       handler: "handler",
       timeout: cdk.Duration.minutes(3),
@@ -27,7 +27,7 @@ export class CheckerStack extends cdk.Stack {
     });
 
     const rule = new events.Rule(this, "WeeklyCheckerRule", {
-      schedule: events.Schedule.cron({ minute: "0", hour: "6", weekDay: "SUN" }),
+      schedule: events.Schedule.cron({ minute: "0", hour: "21", weekDay: "FRI" }),
     });
 
     rule.addTarget(new targets.LambdaFunction(checkerLambda));
