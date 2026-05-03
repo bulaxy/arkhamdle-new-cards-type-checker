@@ -22,9 +22,9 @@ const KNOWN_ISSUES = new Set<string>([
   "slot",
   "option_select",
   "id",
-  // "base_level", // Temp remove to test it
-  // "ignore_match",
-  // "permanent", // This is used, already added in the important spot
+  "base_level",
+  "ignore_match",
+  "permanent", // This is used, already added in the important spot
 ]);
 
 export const handler = async (event: any) => {
